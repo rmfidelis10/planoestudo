@@ -46,6 +46,8 @@ button:disabled{opacity:.5;cursor:default}
 .m{max-width:92%;padding:8px 12px;border-radius:12px;margin:6px 0;white-space:pre-wrap;word-wrap:break-word}
 .m.u{background:var(--ac);color:#fff;margin-left:auto}.m.a{background:var(--card);border:1px solid var(--bd)}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.chips button{font-size:13px;padding:5px 10px}
+.m.a{white-space:normal}.m.a p{margin:0 0 8px}.m.a p:last-child,.m.a ul:last-child{margin-bottom:0}.m.a ul{margin:0 0 8px;padding-left:20px}
+.m.a table{border-collapse:collapse;font-size:13px;display:block;overflow-x:auto;margin:4px 0 8px}.m.a th,.m.a td{border:1px solid var(--bd);padding:4px 8px;text-align:left;vertical-align:top}.m.a th{background:var(--ac2)}
 #chatf{display:flex;gap:8px}#chatf textarea{flex:1;resize:none;height:44px}
 </style>
 </head>
@@ -58,6 +60,7 @@ button:disabled{opacity:.5;cursor:default}
     <div class="row" style="justify-content:space-between;align-items:center;margin:0 0 8px"><b id="pt">Progresso geral</b><span class="small" id="ps"></span></div>
     <div class="bar"><i id="pb"></i></div>
     <div class="row" style="margin:10px 0 0"><button class="ghost" id="ex">⬇ Exportar backup</button><button class="ghost" onclick="document.getElementById('im').click()">⬆ Importar backup</button><input type="file" id="im" accept=".json,application/json" style="display:none"></div>
+    <div class="row" style="margin:10px 0 0;align-items:center"><input id="du" placeholder="URL de dados do n8n"><input id="dk" type="password" placeholder="Senha" style="flex:0 1 160px"><span class="small" id="ds"></span></div>
   </div>
 
   <div class="grid">
@@ -105,10 +108,37 @@ function uid(){return Math.random().toString(36).slice(2,9)}
 function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
 function br(s){var p=s.split("-");return p[2]+"/"+p[1]+"/"+p[0]}
 var S={courses:[],lessons:[]},today=iso(new Date()),sel=today,view=new Date();view.setDate(1);
-var KEY="plano-estudos",WH="plano-estudos-webhook",SID=localStorage.getItem("plano-estudos-sid")||("e"+uid()+uid());
+var KEY="plano-estudos",TS="plano-estudos-ts",WH="plano-estudos-webhook",DUK="plano-estudos-dados-url",TKK="plano-estudos-token",DEF="https://rmfidelis-n8n.ddns.net/webhook/plano-dados",tmr=null;
+var SID=localStorage.getItem("plano-estudos-sid")||("e"+uid()+uid());
 try{localStorage.setItem("plano-estudos-sid",SID)}catch(e){}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
-async function load(){try{var l=localStorage.getItem(KEY);if(l)S=JSON.parse(l)}catch(e){}}
+function DU(){return(localStorage.getItem(DUK)||DEF).trim()}
+function TK(){return localStorage.getItem(TKK)||""}
+function setSt(m){var e=$("ds");if(e)e.textContent=m}
+function api(body){
+  var c=new AbortController(),t=setTimeout(function(){c.abort()},8000);
+  return fetch(DU(),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign({token:TK()},body)),signal:c.signal}).then(function(r){clearTimeout(t);return r.json()});
+}
+function save(){
+  try{localStorage.setItem(KEY,JSON.stringify(S));localStorage.setItem(TS,new Date().toISOString())}catch(e){}
+  clearTimeout(tmr);tmr=setTimeout(push,600);
+}
+async function push(){
+  if(!DU()||!TK())return;
+  try{var r=await api({action:"save",data:S,ts:localStorage.getItem(TS)||new Date().toISOString()});setSt(r.ok?"Sincronizado ✓":(r.error==="unauthorized"?"Senha incorreta":"Erro ao salvar"))}
+  catch(e){setSt("Offline — salvo só neste navegador")}
+}
+async function load(){
+  var ts="";
+  try{var l=localStorage.getItem(KEY);if(l)S=JSON.parse(l);ts=localStorage.getItem(TS)||""}catch(e){}
+  if(!DU()||!TK()){setSt("Sem sincronização: informe a senha");return}
+  try{
+    var r=await api({action:"get"});
+    if(!r.ok){setSt(r.error==="unauthorized"?"Senha incorreta":"Erro no servidor");return}
+    if(r.data&&(!ts||(r.updatedAt||"")>ts)){S=r.data;try{localStorage.setItem(KEY,JSON.stringify(S));localStorage.setItem(TS,r.updatedAt||"")}catch(e){}}
+    else if(S.courses.length||S.lessons.length){if(!ts)try{localStorage.setItem(TS,new Date().toISOString())}catch(e){}await push();return}
+    setSt("Sincronizado ✓");
+  }catch(e){setSt("Offline — usando a cópia deste navegador")}
+}
 
 function cname(id){var c=S.courses.find(function(c){return c.id===id});return c?c.name:""}
 function render(){
@@ -176,6 +206,27 @@ function ctx(){
 function add(role,text){
   var m=document.createElement("div");m.className="m "+(role==="user"?"u":"a");m.textContent=text;$("log").appendChild(m);$("log").scrollTop=1e9;return m;
 }
+function md(t){
+  var L=esc(t).split("\n"),o=[],i=0,T=/^\s*\|.*\|\s*$/,B=/^\s*[-*•]\s+/;
+  function inl(x){return x.replace(/&lt;br\s*\/?&gt;/g,"<br>").replace(/\*\*(.+?)\*\*/g,"<b>$1</b>").replace(/`([^`]+)`/g,"<code>$1</code>").replace(/(^|[^*])\*([^*\s][^*]*?)\*/g,"$1<i>$2</i>")}
+  while(i<L.length){
+    var l=L[i];
+    if(T.test(l)){
+      var h="<table>",k=0;
+      while(i<L.length&&T.test(L[i])){
+        var r=L[i++];if(/^\s*\|[\s:|-]+\|\s*$/.test(r))continue;
+        var tg=k++===0?"th":"td";
+        h+="<tr>"+r.trim().replace(/^\||\|$/g,"").split("|").map(function(c){return"<"+tg+">"+inl(c.trim())+"</"+tg+">"}).join("")+"</tr>";
+      }
+      o.push(h+"</table>");
+    }else if(B.test(l)){
+      var u="<ul>";while(i<L.length&&B.test(L[i]))u+="<li>"+inl(L[i++].replace(B,""))+"</li>";
+      o.push(u+"</ul>");
+    }else if(/^#{1,6}\s+/.test(l)){o.push("<p><b>"+inl(l.replace(/^#{1,6}\s+/,""))+"</b></p>");i++}
+    else{if(l.trim())o.push("<p>"+inl(l)+"</p>");i++}
+  }
+  return o.join("");
+}
 async function send(text){
   if(busy||!text.trim())return;
   var url=($("wh").value||"").trim();
@@ -186,7 +237,7 @@ async function send(text){
     var raw=await r.text(),out=raw;
     if(!r.ok)throw new Error(r.status);
     try{var j=JSON.parse(raw);if(Array.isArray(j))j=j[0];out=j.output||j.reply||j.text||j.message||raw}catch(e){}
-    bub.textContent=out;
+    bub.innerHTML=md(out);
   }catch(e){bub.textContent="Não consegui falar com a IA. Verifique a URL do webhook, se o workflow está ativo e o CORS (Allowed Origins) no nó Webhook."}
   busy=false;$("cb").disabled=false;
 }
@@ -206,7 +257,10 @@ chips();
 add("assistant","Olá! Sou seu tutor. Posso tirar dúvidas, revisar o que você concluiu ou criar exercícios. Por onde começamos?");
 
 load().then(render);render();
-$("wh").value=localStorage.getItem(WH)||"https://rmfidelis-n8n.ddns.net/webhook/plano-estudos";
+$("wh").value=localStorage.getItem(WH)||"";
+$("du").value=DU();$("dk").value=TK();
+function reSync(){try{localStorage.setItem(DUK,$("du").value.trim());localStorage.setItem(TKK,$("dk").value)}catch(e){}load().then(render)}
+$("du").addEventListener("change",reSync);$("dk").addEventListener("change",reSync);
 $("wh").addEventListener("change",function(){try{localStorage.setItem(WH,$("wh").value.trim())}catch(e){}});
 $("ex").onclick=function(){
   var u=URL.createObjectURL(new Blob([JSON.stringify(S,null,2)],{type:"application/json"})),a=document.createElement("a");
