@@ -136,6 +136,7 @@ async function load(){
     if(!r.ok){setSt(r.error==="unauthorized"?"Senha incorreta":"Erro no servidor");return}
     if(r.data&&(!ts||(r.updatedAt||"")>ts)){S=r.data;try{localStorage.setItem(KEY,JSON.stringify(S));localStorage.setItem(TS,r.updatedAt||"")}catch(e){}}
     else if(S.courses.length||S.lessons.length){if(!ts)try{localStorage.setItem(TS,new Date().toISOString())}catch(e){}await push();return}
+    if(r.chatUrl){try{localStorage.setItem(WH,r.chatUrl)}catch(e){}$("wh").value=r.chatUrl}
     setSt("Sincronizado ✓");
   }catch(e){setSt("Offline — usando a cópia deste navegador")}
 }
@@ -230,10 +231,10 @@ function md(t){
 async function send(text){
   if(busy||!text.trim())return;
   var url=($("wh").value||"").trim();
-  if(!url){add("assistant","Cole primeiro a URL do webhook do n8n no campo acima do chat.");return}
+  if(!url){add("assistant","Informe a senha no card de progresso (no topo) para liberar o chat.");return}
   busy=true;$("cb").disabled=true;add("user",text);var bub=add("assistant","…");
   try{
-    var r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:SID,message:text,context:ctx()})});
+    var r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:TK(),sessionId:SID,message:text,context:ctx()})});
     var raw=await r.text(),out=raw;
     if(!r.ok)throw new Error(r.status);
     try{var j=JSON.parse(raw);if(Array.isArray(j))j=j[0];out=j.output||j.reply||j.text||j.message||raw}catch(e){}
@@ -257,7 +258,7 @@ chips();
 add("assistant","Olá! Sou seu tutor. Posso tirar dúvidas, revisar o que você concluiu ou criar exercícios. Por onde começamos?");
 
 load().then(render);render();
-$("wh").value=localStorage.getItem(WH)||"";
+$("wh").value=localStorage.getItem(WH)||"";$("wh").parentNode.style.display="none";$("du").style.display="none";
 $("du").value=DU();$("dk").value=TK();
 function reSync(){try{localStorage.setItem(DUK,$("du").value.trim());localStorage.setItem(TKK,$("dk").value)}catch(e){}load().then(render)}
 $("du").addEventListener("change",reSync);$("dk").addEventListener("change",reSync);
